@@ -18,7 +18,8 @@ fn parse_incoming_command_line(args: &[String]) {
     dbg!(args);
     for a in args.iter() {
         if a.starts_with("--cmd") {
-            println!("this is a command {}", a);
+            let cmd_string = &a["--cmd=".chars().count()..].to_string();
+            println!("this is a command {} using {}", a, cmd_string);
         } else if a.starts_with("--out") {
             println!("this specifies a stdout color {}", a);
         } else if a.starts_with("--err") {

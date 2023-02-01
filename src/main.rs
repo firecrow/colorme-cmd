@@ -8,11 +8,11 @@ const RED: i32 = 31;
 const YELLOW: i32 = 33;
 const GREEN: i32 = 32;
 
-pub struct Command {
+pub struct Command<'a> {
     out_color: i32,
     err_color: i32,
-    filename: String,
-    //args: Vec<String>,
+    filename: Option<&'a str>,
+    args: Vec<&'a str>,
 }
 
 fn parse_incoming_command_line(args: &[String]) -> Box<Command> {
@@ -26,18 +26,21 @@ fn parse_incoming_command_line(args: &[String]) -> Box<Command> {
     };
 
     let mut cmd = Box::new(Command {
-        filename: "".to_string(),
-        //args: Vec::<String>::with_capacity(0),
+        filename: None,
+        args: Vec::<&str>::with_capacity(0),
         out_color: DEFAULT_COLOR,
         err_color: DEFAULT_COLOR,
     });
 
     for a in args.iter() {
         if a.starts_with("--cmd=") {
-            let cmd_string = &a["--cmd=".chars().count()..].to_string();
+            let cmd_string = &a["--cmd=".chars().count()..];
             println!("this is a command {} using {}", a, cmd_string);
 
-            cmd.filename = cmd_string.clone();
+            let mut arglist = cmd_string.split_whitespace();
+
+            cmd.filename = arglist.nth(0);
+            cmd.args = arglist.collect();
         } else if a.starts_with("--out=") {
             let out_color_string = &a["--out=".chars().count()..].to_string();
             println!("this is a command {} using {}", a, out_color_string);

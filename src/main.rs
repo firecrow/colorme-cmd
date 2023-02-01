@@ -14,13 +14,24 @@ pub struct command {
 }
 */
 
-fn parse_incoming_command_line(args: Vec<String>) {
+fn parse_incoming_command_line(args: &[String]) {
     dbg!(args);
+    for a in args.iter() {
+        if a.starts_with("--cmd") {
+            println!("this is a command {}", a);
+        } else if a.starts_with("--out") {
+            println!("this specifies a stdout color {}", a);
+        } else if a.starts_with("--err") {
+            println!("this specifies a stderr color {}", a);
+        } else {
+            println!("unknown arg found {}", a);
+        }
+    }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    parse_incoming_command_line(args);
+    parse_incoming_command_line(&args);
 
     let cmd = CString::new("ls").unwrap();
     let dir = CString::new(".").unwrap();

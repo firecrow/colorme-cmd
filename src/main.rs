@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use maplit::hashmap;
 use nix::unistd::execvp;
 use std::env;
@@ -70,11 +71,12 @@ fn main() {
     let safefilename = cmd.filename.unwrap();
     let cstring_filename = CString::new(safefilename).unwrap();
     let cmdname = cstring_filename.as_c_str();
-    //let arglist = cmd.args;
+    let argiter = cmd.args.into_iter();
 
-    let dir = CString::new("ls").unwrap();
+    let mut argsvec = ArrayVec::<CString, 10>::new();
+    argiter.for_each(|s| argsvec.push(CString::new(s).unwrap()));
 
-    execvp(cmdname, &[&dir])
+    execvp(cmdname, &argsvec.into_inner().unwrap())
         .map_err(|err| println!("error from execvp {:?}", err))
         .ok();
 }

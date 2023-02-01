@@ -1,12 +1,15 @@
 use arrayvec::ArrayVec;
+use libc::fcntl;
 use maplit::hashmap;
+use nix::sys::wait::waitpid;
 use nix::unistd::{dup2, execvp, fork, pipe, ForkResult};
-use std::env;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::io::FromRawFd;
 use std::str;
+use std::thread::sleep;
+use std::{env, time};
 
 const DEFAULT_COLOR: i32 = 0;
 const RED: i32 = 31;
@@ -88,13 +91,21 @@ fn main() -> std::io::Result<()> {
             println!("yay we are the parent, process is {}", child);
 
             unsafe {
+                fcntl(from_child_fd, libc::F_SETFL, libc::O_NONBLOCK);
+
                 let mut from_child = File::from_raw_fd(from_child_fd);
 
                 let mut buf = [0; 1024];
-                Read::read(&mut from_child, &mut buf).unwrap();
+                let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
                 loop {
-                    print!("\x1b[33m{}\x1b[0m", str::from_utf8(&buf).unwrap());
-                    Read::read(&mut from_child, &mut buf).unwrap();
+                    if len > 0 {
+                        print!("-> \x1b[33m{}\x1b[0m", str::from_utf8(&buf).unwrap());
+                    } else {
+                        println!("\x1b[36m0\x1b[0m");
+                    }
+                    len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
+
+                    sleep(time::Duration::from_millis(100));
                 }
             };
         }

@@ -37,7 +37,7 @@ fn parse_incoming_command_line(args: &[String]) -> Box<Command> {
             let cmd_string = &a["--cmd=".chars().count()..];
             println!("this is a command {} using {}", a, cmd_string);
 
-            let mut arglist = cmd_string.split_whitespace();
+            let mut arglist = cmd_string.split(" ");
 
             cmd.filename = arglist.nth(0);
             cmd.args = arglist.collect();
@@ -61,12 +61,20 @@ fn parse_incoming_command_line(args: &[String]) -> Box<Command> {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    parse_incoming_command_line(&args);
+    let cmd = parse_incoming_command_line(&args);
 
-    let cmd = CString::new("ls").unwrap();
-    let dir = CString::new(".").unwrap();
+    if cmd.filename.is_none() {
+        return;
+    }
 
-    execvp(&cmd, &[&cmd, &dir])
+    let safefilename = cmd.filename.unwrap();
+    let cstring_filename = CString::new(safefilename).unwrap();
+    let cmdname = cstring_filename.as_c_str();
+    //let arglist = cmd.args;
+
+    let dir = CString::new("ls").unwrap();
+
+    execvp(cmdname, &[&dir])
         .map_err(|err| println!("error from execvp {:?}", err))
         .ok();
 }

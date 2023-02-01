@@ -1,8 +1,12 @@
 use arrayvec::ArrayVec;
 use maplit::hashmap;
-use nix::unistd::execvp;
+use nix::unistd::{dup2, execvp, fork, pipe, ForkResult};
 use std::env;
 use std::ffi::CString;
+use std::fs::File;
+use std::io::Read;
+use std::os::unix::io::FromRawFd;
+use std::str;
 
 const DEFAULT_COLOR: i32 = 0;
 const RED: i32 = 31;
@@ -60,12 +64,12 @@ fn parse_incoming_command_line(args: &[String]) -> Box<Command> {
     return cmd;
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     let cmd = parse_incoming_command_line(&args);
 
     if cmd.filename.is_none() {
-        return;
+        return Ok(());
     }
 
     let safefilename = cmd.filename.unwrap();
@@ -77,7 +81,35 @@ fn main() {
     argsvec.push(CString::new(safefilename).unwrap());
     argiter.for_each(|s| argsvec.push(CString::new(s).unwrap()));
 
-    execvp(cmdname, &argsvec.into_inner().unwrap())
-        .map_err(|err| println!("error from execvp {:?}", err))
-        .ok();
+    let (from_child_fd, to_parent) = pipe().unwrap();
+
+    match unsafe { fork() } {
+        Ok(ForkResult::Parent { child, .. }) => {
+            println!("yay we are the parent, process is {}", child);
+
+            unsafe {
+                let mut from_child = File::from_raw_fd(from_child_fd);
+
+                let mut buf = [0; 1024];
+                Read::read(&mut from_child, &mut buf).unwrap();
+                println!(
+                    "read bytes \x1b[33m{:?}\x1b[0m",
+                    str::from_utf8(&buf).unwrap()
+                );
+                //let has_been_read = Read::read(&mut from_child, &mut buf).unwrap();
+                /*
+                let mut content = String::new();
+                print!("{:?}", from_child.read_to_string(&mut content)?);
+                */
+            };
+        }
+        Ok(ForkResult::Child) => {
+            dup2(to_parent, 1).unwrap();
+            execvp(cmdname, &argsvec.into_inner().unwrap())
+                .map_err(|err| println!("error from execvp {:?}", err))
+                .ok();
+        }
+        Err(_) => println!("Error fork failed"),
+    }
+    return Ok(());
 }

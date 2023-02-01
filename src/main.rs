@@ -73,7 +73,8 @@ fn main() {
     let cmdname = cstring_filename.as_c_str();
     let argiter = cmd.args.into_iter();
 
-    let mut argsvec = ArrayVec::<CString, 10>::new();
+    let mut argsvec = ArrayVec::<CString, 3>::new();
+    argsvec.push(CString::new(safefilename).unwrap());
     argiter.for_each(|s| argsvec.push(CString::new(s).unwrap()));
 
     execvp(cmdname, &argsvec.into_inner().unwrap())

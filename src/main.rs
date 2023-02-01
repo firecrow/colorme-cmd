@@ -92,15 +92,10 @@ fn main() -> std::io::Result<()> {
 
                 let mut buf = [0; 1024];
                 Read::read(&mut from_child, &mut buf).unwrap();
-                println!(
-                    "read bytes \x1b[33m{:?}\x1b[0m",
-                    str::from_utf8(&buf).unwrap()
-                );
-                //let has_been_read = Read::read(&mut from_child, &mut buf).unwrap();
-                /*
-                let mut content = String::new();
-                print!("{:?}", from_child.read_to_string(&mut content)?);
-                */
+                loop {
+                    print!("\x1b[33m{}\x1b[0m", str::from_utf8(&buf).unwrap());
+                    Read::read(&mut from_child, &mut buf).unwrap();
+                }
             };
         }
         Ok(ForkResult::Child) => {

@@ -97,8 +97,10 @@ fn main() -> std::io::Result<()> {
 
                 let mut buf = [0; 1024];
                 let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
+
                 loop {
                     let status = wait::waitpid(child, Some(WaitPidFlag::WNOHANG)).unwrap();
+
                     match status {
                         WaitStatus::Exited(_child, _) => break,
                         WaitStatus::Signaled(_child, _, _) => break,

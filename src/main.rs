@@ -99,6 +99,19 @@ fn main() -> std::io::Result<()> {
                 let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
 
                 loop {
+                    if len > 0 {
+                        print!(
+                            "\x1b[{}m{}\x1b[0m",
+                            cmd.out_color,
+                            str::from_utf8(&buf).unwrap()
+                        );
+                    } else {
+                        println!("\x1b[36m0\x1b[0m");
+                    }
+                    len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
+
+                    sleep(time::Duration::from_millis(100));
+
                     let status = wait::waitpid(child, Some(WaitPidFlag::WNOHANG)).unwrap();
 
                     match status {
@@ -107,15 +120,6 @@ fn main() -> std::io::Result<()> {
                         WaitStatus::Stopped(_child, _) => break,
                         _ => println!("still rockin"),
                     }
-
-                    if len > 0 {
-                        print!("-> \x1b[33m{}\x1b[0m", str::from_utf8(&buf).unwrap());
-                    } else {
-                        println!("\x1b[36m0\x1b[0m");
-                    }
-                    len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
-
-                    sleep(time::Duration::from_millis(100));
                 }
             };
         }

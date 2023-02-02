@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 use libc::fcntl;
 use maplit::hashmap;
-use nix::sys::wait::waitpid;
+use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
 use nix::unistd::{dup2, execvp, fork, pipe, ForkResult};
 use std::ffi::CString;
 use std::fs::File;
@@ -98,6 +98,14 @@ fn main() -> std::io::Result<()> {
                 let mut buf = [0; 1024];
                 let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
                 loop {
+                    let status = wait::waitpid(child, Some(WaitPidFlag::WNOHANG)).unwrap();
+                    match status {
+                        WaitStatus::Exited(_child, _) => break,
+                        WaitStatus::Signaled(_child, _, _) => break,
+                        WaitStatus::Stopped(_child, _) => break,
+                        _ => println!("still rockin"),
+                    }
+
                     if len > 0 {
                         print!("-> \x1b[33m{}\x1b[0m", str::from_utf8(&buf).unwrap());
                     } else {

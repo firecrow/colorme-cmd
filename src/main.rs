@@ -110,8 +110,6 @@ fn main() -> std::io::Result<()> {
                     }
                     len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
 
-                    sleep(time::Duration::from_millis(100));
-
                     let status = wait::waitpid(child, Some(WaitPidFlag::WNOHANG)).unwrap();
 
                     match status {
@@ -120,6 +118,8 @@ fn main() -> std::io::Result<()> {
                         WaitStatus::Stopped(_child, _) => break,
                         _ => println!("still rockin"),
                     }
+
+                    sleep(time::Duration::from_millis(100));
                 }
             };
         }

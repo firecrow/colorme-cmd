@@ -8,5 +8,5 @@ commands:
   - bin: "tail"
     args: ["-F", "/var/log/mpd/mpd.log"]
     follow: true 
-    out_color: yellow 
+    out_color: green 
     err_color: red 

@@ -3,7 +3,7 @@
 use libc::fcntl;
 use maplit::hashmap;
 use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
-use nix::unistd::{dup2, execvp, fork, pipe, ForkResult};
+use nix::unistd::{dup2, execvp, fork, pipe, ForkResult, Pid};
 use serde_derive::{self, Deserialize, Serialize};
 use serde_yaml;
 use std::error::Error;
@@ -19,6 +19,8 @@ const DEFAULT_COLOR: i32 = 0;
 const RED: i32 = 31;
 const YELLOW: i32 = 33;
 const GREEN: i32 = 32;
+const PURPLE: i32 = 34;
+const BLUE: i32 = 35;
 
 fn get_color(color: &String) -> i32 {
     let color_map = hashmap! {
@@ -26,6 +28,8 @@ fn get_color(color: &String) -> i32 {
         "red" => RED,
         "green" => GREEN,
         "yellow" => YELLOW,
+        "blue" => BLUE,
+        "purple" => PURPLE,
     };
     return color_map[&color[..]];
 }
@@ -72,6 +76,12 @@ struct Command {
     follow: bool,
 }
 
+struct CommandCtx<'a> {
+    command: &'a Command,
+    listen_fd: i32,
+    pid: Pid,
+}
+
 fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     println!("opening config file {}", config_fname);
 
@@ -90,41 +100,28 @@ struct RunningProcess {
     status: Option<i32>,
 }
 
-fn launch_command(command: Command) {
-    let cstring_filename = CString::new(command.bin).unwrap();
-    let cmdname = cstring_filename.as_c_str();
+fn listen_to_commands(commands: Vec<CommandCtx>) {
+    for ctx in commands {
+        unsafe {
+            fcntl(ctx.listen_fd, libc::F_SETFL, libc::O_NONBLOCK);
 
-    let mut argsvec = Vec::<CString>::new();
+            let mut from_child = File::from_raw_fd(ctx.listen_fd);
 
-    argsvec.push(cstring_filename.clone());
-    let argiter = command.args.into_iter();
-    argiter.for_each(|s| argsvec.push(CString::new(s).unwrap()));
+            let mut buf = [0; 1024];
+            let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
+            loop {
+                if len > 0 {
+                    println!("using color {}", &ctx.command.out_color);
+                    print!(
+                        "\x1b[{}m{}\x1b[0m",
+                        get_color(&ctx.command.out_color),
+                        str::from_utf8(&buf).unwrap()
+                    );
+                }
+                len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
 
-    let (from_child_fd, to_parent) = pipe().unwrap();
-
-    match unsafe { fork() } {
-        Ok(ForkResult::Parent { child, .. }) => {
-            println!("yay we are the parent, process is {}", child);
-
-            unsafe {
-                fcntl(from_child_fd, libc::F_SETFL, libc::O_NONBLOCK);
-
-                let mut from_child = File::from_raw_fd(from_child_fd);
-
-                let mut buf = [0; 1024];
-                let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
-
-                loop {
-                    if len > 0 {
-                        print!(
-                            "\x1b[{}m{}\x1b[0m",
-                            get_color(&command.out_color),
-                            str::from_utf8(&buf).unwrap()
-                        );
-                    }
-                    len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
-
-                    let status = wait::waitpid(child, Some(WaitPidFlag::WNOHANG)).unwrap();
+                if ctx.command.follow {
+                    let status = wait::waitpid(ctx.pid, Some(WaitPidFlag::WNOHANG)).unwrap();
 
                     match status {
                         WaitStatus::Exited(_child, _) => break,
@@ -132,9 +129,33 @@ fn launch_command(command: Command) {
                         WaitStatus::Stopped(_child, _) => break,
                         _ => (),
                     }
-
-                    sleep(time::Duration::from_millis(100));
                 }
+
+                sleep(time::Duration::from_millis(100));
+            }
+        };
+    }
+}
+
+fn launch_command(command: &Command) {
+    let cstring_filename = CString::new(command.bin.clone()).unwrap();
+    let cmdname = cstring_filename.as_c_str();
+
+    let mut argsvec = Vec::<CString>::new();
+
+    argsvec.push(cstring_filename.clone());
+    let argiter = command.args.clone().into_iter();
+    argiter.for_each(|s| argsvec.push(CString::new(s).unwrap()));
+
+    let (from_child_fd, to_parent) = pipe().unwrap();
+
+    match unsafe { fork() } {
+        Ok(ForkResult::Parent { child, .. }) => {
+            println!("yay we are the parent, process is {}", child);
+            let command_ctx = CommandCtx {
+                command: &command,
+                pid: child,
+                listen_fd: from_child_fd,
             };
         }
         Ok(ForkResult::Child) => {
@@ -157,7 +178,7 @@ fn main() -> std::io::Result<()> {
         Ok(config) => {
             for cmd in config.commands {
                 println!("Found a command: {}", cmd.bin);
-                launch_command(cmd);
+                launch_command(&cmd);
             }
         }
         Err(_) => panic!("Error parsing command file"),

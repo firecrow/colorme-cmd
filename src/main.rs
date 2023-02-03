@@ -5,6 +5,7 @@ use libc::fcntl;
 use maplit::hashmap;
 use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
 use nix::unistd::{dup2, execvp, fork, pipe, ForkResult};
+use serde_derive::{self, Deserialize, Serialize};
 use serde_yaml;
 use std::error::Error;
 use std::ffi::CString;
@@ -20,13 +21,6 @@ const RED: i32 = 31;
 const YELLOW: i32 = 33;
 const GREEN: i32 = 32;
 
-pub struct Command<'a> {
-    out_color: i32,
-    err_color: i32,
-    filename: Option<&'a str>,
-    args: Vec<&'a str>,
-}
-
 fn get_color(color: &str) -> i32 {
     let color_map = hashmap! {
         "default".to_string() => DEFAULT_COLOR,
@@ -37,16 +31,16 @@ fn get_color(color: &str) -> i32 {
     return color_map[color];
 }
 
-pub struct Configuration<'a> {
+pub struct OptConfiguration<'a> {
     config_filename: &'a str,
 }
 
 const DEFAULT_CONFIG_FILENAME: &str = "cmd.yml";
 
-fn parse_incoming_command_line(args: &[String]) -> Box<Configuration> {
+fn parse_incoming_command_line(args: &[String]) -> Box<OptConfiguration> {
     dbg!(args);
 
-    let mut config = Box::new(Configuration {
+    let mut config = Box::new(OptConfiguration {
         config_filename: &DEFAULT_CONFIG_FILENAME,
     });
 
@@ -65,22 +59,28 @@ fn parse_incoming_command_line(args: &[String]) -> Box<Configuration> {
     return config;
 }
 
-fn parse_config(config_fname: &str) -> Result<(), Box<dyn Error>> {
+#[derive(Debug, Serialize, Deserialize)]
+struct Config {
+    commands: Vec<Command>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Command {
+    out_color: String,
+    err_color: String,
+    bin: String,
+    args: Vec<String>,
+    follow: bool,
+}
+
+fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     println!("opening config file {}", config_fname);
 
     let reader = File::open(config_fname)?;
-    let config: serde_yaml::Value = serde_yaml::from_reader(reader)?;
+    let config: Config =
+        serde_yaml::from_reader(reader).expect("Config file of the expected commands format");
 
-    dbg!(config);
-
-    /*
-    config["foo"]["bar"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or("Could not find comands");
-        */
-
-    Ok(())
+    return Ok(config);
 }
 
 fn main() -> std::io::Result<()> {

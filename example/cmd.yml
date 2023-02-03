@@ -1,5 +1,6 @@
 commands:
-    - "ls":
-        - args: ["/", "-ltr"]
-        - follow: false
-        - out-color: blue
+  - bin: "ls"
+    args: ["/", "-ltr"]
+    follow: false
+    out_color: blue
+    err_color: red 

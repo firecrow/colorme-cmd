@@ -1,0 +1,5 @@
+commands:
+    - "ls":
+        - args: ["/", "-ltr"]
+        - follow: false
+        - out-color: blue

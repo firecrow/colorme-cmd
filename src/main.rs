@@ -1,8 +1,12 @@
+#![allow(dead_code)]
+
 use arrayvec::ArrayVec;
 use libc::fcntl;
 use maplit::hashmap;
 use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
 use nix::unistd::{dup2, execvp, fork, pipe, ForkResult};
+use serde_yaml;
+use std::error::Error;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
@@ -23,53 +27,66 @@ pub struct Command<'a> {
     args: Vec<&'a str>,
 }
 
-fn parse_incoming_command_line(args: &[String]) -> Box<Command> {
-    dbg!(args);
-
+fn get_color(color: &str) -> i32 {
     let color_map = hashmap! {
         "default".to_string() => DEFAULT_COLOR,
         "red".to_string() => RED,
         "green".to_string() => GREEN,
         "yellow".to_string() => YELLOW,
     };
+    return color_map[color];
+}
 
-    let mut cmd = Box::new(Command {
-        filename: None,
-        args: Vec::<&str>::with_capacity(0),
-        out_color: DEFAULT_COLOR,
-        err_color: DEFAULT_COLOR,
+pub struct Configuration<'a> {
+    config_filename: &'a str,
+}
+
+const DEFAULT_CONFIG_FILENAME: &str = "cmd.conf";
+
+fn parse_incoming_command_line(args: &[String]) -> Box<Configuration> {
+    dbg!(args);
+
+    let mut config = Box::new(Configuration {
+        config_filename: &DEFAULT_CONFIG_FILENAME,
     });
 
     for a in args.iter() {
-        if a.starts_with("--cmd=") {
-            let cmd_string = &a["--cmd=".chars().count()..];
-            println!("this is a command {} using {}", a, cmd_string);
+        let config_pref = "--config=";
+        if a.starts_with(config_pref) {
+            let config_file_string = &a[config_pref.chars().count()..];
+            println!("parsing the config file from {}", config_file_string);
 
-            let mut arglist = cmd_string.split(" ");
-
-            cmd.filename = arglist.nth(0);
-            cmd.args = arglist.collect();
-        } else if a.starts_with("--out=") {
-            let out_color_string = &a["--out=".chars().count()..].to_string();
-            println!("this is a command {} using {}", a, out_color_string);
-
-            cmd.out_color = color_map[out_color_string];
-        } else if a.starts_with("--err=") {
-            let err_color_string = &a["--err=".chars().count()..].to_string();
-            println!("this is a command {} using {}", a, err_color_string);
-
-            cmd.err_color = color_map[err_color_string];
+            config.config_filename = &config_file_string;
         } else {
             println!("argument not recognized skipping {}", a);
         }
     }
 
-    return cmd;
+    return config;
+}
+
+fn parse_config(config_fname: String) -> Result<(), Box<dyn Error>> {
+    let reader = File::open(config_fname)?;
+    let config: serde_yaml::Value = serde_yaml::from_reader(reader)?;
+
+    dbg!(config);
+
+    /*
+    config["foo"]["bar"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or("Could not find comands");
+        */
+
+    Ok(())
 }
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let cmd = parse_incoming_command_line(&args);
+
+    let config = parse_incoming_command_line(&args);
+    dbg!(config.config_filename);
+    /*
 
     if cmd.filename.is_none() {
         return Ok(());
@@ -131,5 +148,6 @@ fn main() -> std::io::Result<()> {
         }
         Err(_) => println!("Error fork failed"),
     }
+    */
     return Ok(());
 }

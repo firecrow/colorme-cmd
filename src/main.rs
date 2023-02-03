@@ -137,7 +137,7 @@ fn listen_to_commands(commands: Vec<CommandCtx>) {
     }
 }
 
-fn launch_command(command: &Command) {
+fn launch_commands(command: &Command) -> Vec<CommandCtx> {
     let cstring_filename = CString::new(command.bin.clone()).unwrap();
     let cmdname = cstring_filename.as_c_str();
 
@@ -149,14 +149,16 @@ fn launch_command(command: &Command) {
 
     let (from_child_fd, to_parent) = pipe().unwrap();
 
+    let mut ctxvec = Vec::<CommandCtx>::with_capacity(1);
+
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => {
             println!("yay we are the parent, process is {}", child);
-            let command_ctx = CommandCtx {
+            ctxvec.push(CommandCtx {
                 command: &command,
                 pid: child,
                 listen_fd: from_child_fd,
-            };
+            });
         }
         Ok(ForkResult::Child) => {
             dup2(to_parent, 1).unwrap();
@@ -166,6 +168,8 @@ fn launch_command(command: &Command) {
         }
         Err(_) => println!("Error fork failed"),
     }
+
+    ctxvec
 }
 
 fn main() -> std::io::Result<()> {
@@ -178,7 +182,7 @@ fn main() -> std::io::Result<()> {
         Ok(config) => {
             for cmd in config.commands {
                 println!("Found a command: {}", cmd.bin);
-                launch_command(&cmd);
+                launch_commands(&cmd);
             }
         }
         Err(_) => panic!("Error parsing command file"),

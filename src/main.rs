@@ -41,7 +41,7 @@ pub struct Configuration<'a> {
     config_filename: &'a str,
 }
 
-const DEFAULT_CONFIG_FILENAME: &str = "cmd.conf";
+const DEFAULT_CONFIG_FILENAME: &str = "cmd.yml";
 
 fn parse_incoming_command_line(args: &[String]) -> Box<Configuration> {
     dbg!(args);
@@ -65,7 +65,9 @@ fn parse_incoming_command_line(args: &[String]) -> Box<Configuration> {
     return config;
 }
 
-fn parse_config(config_fname: String) -> Result<(), Box<dyn Error>> {
+fn parse_config(config_fname: &str) -> Result<(), Box<dyn Error>> {
+    println!("opening config file {}", config_fname);
+
     let reader = File::open(config_fname)?;
     let config: serde_yaml::Value = serde_yaml::from_reader(reader)?;
 
@@ -84,8 +86,11 @@ fn parse_config(config_fname: String) -> Result<(), Box<dyn Error>> {
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    let config = parse_incoming_command_line(&args);
-    dbg!(config.config_filename);
+    let opts = parse_incoming_command_line(&args);
+    dbg!(opts.config_filename);
+
+    let config = parse_config(&opts.config_filename);
+    dbg!(config.unwrap());
     /*
 
     if cmd.filename.is_none() {

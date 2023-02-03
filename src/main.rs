@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use arrayvec::ArrayVec;
 use libc::fcntl;
 use maplit::hashmap;
 use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
@@ -21,14 +20,14 @@ const RED: i32 = 31;
 const YELLOW: i32 = 33;
 const GREEN: i32 = 32;
 
-fn get_color(color: &str) -> i32 {
+fn get_color(color: &String) -> i32 {
     let color_map = hashmap! {
-        "default".to_string() => DEFAULT_COLOR,
-        "red".to_string() => RED,
-        "green".to_string() => GREEN,
-        "yellow".to_string() => YELLOW,
+        "default" => DEFAULT_COLOR,
+        "red" => RED,
+        "green" => GREEN,
+        "yellow" => YELLOW,
     };
-    return color_map[color];
+    return color_map[&color[..]];
 }
 
 pub struct OptConfiguration<'a> {
@@ -76,34 +75,29 @@ struct Command {
 fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     println!("opening config file {}", config_fname);
 
-    let reader = File::open(config_fname)?;
-    let config: Config =
-        serde_yaml::from_reader(reader).expect("Config file of the expected commands format");
+    let reader = File::open(config_fname).expect("Unable to parse config file");
+    let config_result: Result<Config, serde_yaml::Error> = serde_yaml::from_reader(reader);
 
-    return Ok(config);
+    match config_result {
+        Ok(config) => Ok(config),
+        Err(_) => panic!("Error parsing config file"),
+    }
 }
 
-fn main() -> std::io::Result<()> {
-    let args: Vec<String> = env::args().collect();
+struct RunningProcess {
+    command: Command,
+    out: File,
+    status: Option<i32>,
+}
 
-    let opts = parse_incoming_command_line(&args);
-    dbg!(opts.config_filename);
-
-    let config = parse_config(&opts.config_filename);
-    dbg!(config.unwrap());
-    /*
-
-    if cmd.filename.is_none() {
-        return Ok(());
-    }
-
-    let safefilename = cmd.filename.unwrap();
-    let cstring_filename = CString::new(safefilename).unwrap();
+fn launch_command(command: Command) {
+    let cstring_filename = CString::new(command.bin).unwrap();
     let cmdname = cstring_filename.as_c_str();
-    let argiter = cmd.args.into_iter();
 
-    let mut argsvec = ArrayVec::<CString, 3>::new();
-    argsvec.push(CString::new(safefilename).unwrap());
+    let mut argsvec = Vec::<CString>::new();
+
+    argsvec.push(cstring_filename.clone());
+    let argiter = command.args.into_iter();
     argiter.for_each(|s| argsvec.push(CString::new(s).unwrap()));
 
     let (from_child_fd, to_parent) = pipe().unwrap();
@@ -124,11 +118,9 @@ fn main() -> std::io::Result<()> {
                     if len > 0 {
                         print!(
                             "\x1b[{}m{}\x1b[0m",
-                            cmd.out_color,
+                            get_color(&command.out_color),
                             str::from_utf8(&buf).unwrap()
                         );
-                    } else {
-                        println!("\x1b[36m0\x1b[0m");
                     }
                     len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
 
@@ -138,7 +130,7 @@ fn main() -> std::io::Result<()> {
                         WaitStatus::Exited(_child, _) => break,
                         WaitStatus::Signaled(_child, _, _) => break,
                         WaitStatus::Stopped(_child, _) => break,
-                        _ => println!("still rockin"),
+                        _ => (),
                     }
 
                     sleep(time::Duration::from_millis(100));
@@ -147,12 +139,29 @@ fn main() -> std::io::Result<()> {
         }
         Ok(ForkResult::Child) => {
             dup2(to_parent, 1).unwrap();
-            execvp(cmdname, &argsvec.into_inner().unwrap())
+            execvp(cmdname, &argsvec[..])
                 .map_err(|err| println!("error from execvp {:?}", err))
                 .ok();
         }
         Err(_) => println!("Error fork failed"),
     }
-    */
+}
+
+fn main() -> std::io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+
+    let opts = parse_incoming_command_line(&args);
+    dbg!(opts.config_filename);
+
+    match parse_config(&opts.config_filename) {
+        Ok(config) => {
+            for cmd in config.commands {
+                println!("Found a command: {}", cmd.bin);
+                launch_command(cmd);
+            }
+        }
+        Err(_) => panic!("Error parsing command file"),
+    }
+
     return Ok(());
 }

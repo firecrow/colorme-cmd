@@ -4,3 +4,9 @@ commands:
     follow: false
     out_color: blue
     err_color: red 
+
+  - bin: "tail"
+    args: ["-F", "/var/log/mpd/mpd.log"]
+    follow: true 
+    out_color: yellow 
+    err_color: red 

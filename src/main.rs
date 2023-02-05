@@ -78,8 +78,8 @@ struct Command {
 
 struct CommandCtx<'a> {
     command: &'a Command,
-    child_out_file: Option<&'a File>,
-    pid: Option<Pid>,
+    child_out_file: File,
+    pid: Pid,
 }
 
 fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
@@ -95,14 +95,10 @@ fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
 }
 
 fn listen_to_commands(commands: Vec<Box<CommandCtx>>) {
-    dbg!(commands.len());
-
     loop {
         for ctx in &commands {
-            let mut child_file = ctx.child_out_file.expect("File not set");
-
             let mut buf = [0; 1024];
-            let len = child_file.read(&mut buf).unwrap_or_default();
+            let len = ctx.child_out_file.read(&mut buf).unwrap_or_default();
 
             println!("reading {} : {:?}", len, ctx.pid);
 
@@ -129,7 +125,7 @@ fn listen_to_commands(commands: Vec<Box<CommandCtx>>) {
     }
 }
 
-fn launch_command<'a>(command: &'a Command) -> Box<CommandCtx> {
+fn launch_command<'a>(command: &'a Command) -> Option<Box<CommandCtx>> {
     let cstring_filename = CString::new(command.bin.clone()).unwrap();
     let cmdname = cstring_filename.as_c_str();
 
@@ -141,12 +137,6 @@ fn launch_command<'a>(command: &'a Command) -> Box<CommandCtx> {
 
     let (from_child_fd, to_parent) = pipe().unwrap();
 
-    let mut ctx = Box::new(CommandCtx {
-        command: &command,
-        pid: Default::default(),
-        child_out_file: Default::default(),
-    });
-
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => {
             println!("yay we are the parent, process is {}", child);
@@ -154,10 +144,14 @@ fn launch_command<'a>(command: &'a Command) -> Box<CommandCtx> {
             unsafe {
                 fcntl(from_child_fd, libc::F_SETFL, libc::O_NONBLOCK);
 
-                let mut from_child = File::from_raw_fd(from_child_fd);
+                let from_child = File::from_raw_fd(from_child_fd);
 
-                ctx.pid = Some(child);
-                ctx.child_out_file = Some(&mut from_child);
+                let ctx = Box::new(CommandCtx {
+                    command: &command,
+                    pid: child,
+                    child_out_file: from_child,
+                });
+                return Some(ctx);
             }
         }
         Ok(ForkResult::Child) => {
@@ -166,11 +160,13 @@ fn launch_command<'a>(command: &'a Command) -> Box<CommandCtx> {
             execvp(cmdname, &argsvec[..])
                 .map_err(|err| println!("error from execvp {:?}", err))
                 .ok();
+            None
         }
-        Err(_) => println!("Error fork failed"),
+        Err(_) => {
+            println!("Error fork failed");
+            None
+        }
     }
-
-    ctx
 }
 
 fn main() -> std::io::Result<()> {
@@ -183,8 +179,10 @@ fn main() -> std::io::Result<()> {
         Ok(config) => {
             let mut running_commands = Vec::<Box<CommandCtx>>::with_capacity(config.commands.len());
             for cmd in &config.commands {
-                println!("Found a command: {}", cmd.bin);
-                running_commands.push(launch_command(&cmd));
+                if let Some(ctx) = launch_command(&cmd) {
+                    println!("Found a command: {}", cmd.bin);
+                    running_commands.push(ctx)
+                }
             }
             listen_to_commands(running_commands);
         }

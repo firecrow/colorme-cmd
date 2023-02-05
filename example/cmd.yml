@@ -2,17 +2,14 @@ commands:
   - bin: "ls"
     args: ["/", "-ltr"]
     follow: false
-    out_color: blue
-    err_color: red 
+    out_color: purple 
 
   - bin: "tail"
     args: ["-F", "/var/log/mpd/mpd.log"]
     follow: true 
     out_color: green 
-    err_color: red 
 
   - bin: "tail"
     args: ["-F", "/var/log/syslog"]
     follow: true 
     out_color: blue 
-    err_color: red 

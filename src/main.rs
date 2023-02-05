@@ -19,8 +19,8 @@ const DEFAULT_COLOR: i32 = 0;
 const RED: i32 = 31;
 const YELLOW: i32 = 33;
 const GREEN: i32 = 32;
-const PURPLE: i32 = 34;
-const BLUE: i32 = 35;
+const BLUE: i32 = 34;
+const PURPLE: i32 = 35;
 
 fn get_color(color: &String) -> i32 {
     let color_map = hashmap! {
@@ -70,7 +70,6 @@ struct Config {
 #[derive(Debug, Serialize, Deserialize)]
 struct Command {
     out_color: String,
-    err_color: String,
     bin: String,
     args: Vec<String>,
     follow: bool,

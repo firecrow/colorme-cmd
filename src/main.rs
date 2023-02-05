@@ -76,10 +76,10 @@ struct Command {
     follow: bool,
 }
 
-struct CommandCtx<'a> {
-    command: &'a Command,
-    listen_fd: i32,
-    pid: Pid,
+struct CommandCtx {
+    command: Command,
+    listen_fd: Option<i32>,
+    pid: Option<Pid>,
 }
 
 fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
@@ -100,12 +100,15 @@ struct RunningProcess {
     status: Option<i32>,
 }
 
-fn listen_to_commands(commands: Vec<CommandCtx>) {
-    for ctx in commands {
-        unsafe {
-            fcntl(ctx.listen_fd, libc::F_SETFL, libc::O_NONBLOCK);
+fn listen_to_commands(commands: Vec<Box<CommandCtx>>) {
+    dbg!(commands.len());
 
-            let mut from_child = File::from_raw_fd(ctx.listen_fd);
+    for ctx in commands {
+        let listen_fd = ctx.listen_fd.expect("listen fd sould have been set by now");
+        unsafe {
+            fcntl(listen_fd, libc::F_SETFL, libc::O_NONBLOCK);
+
+            let mut from_child = File::from_raw_fd(listen_fd);
 
             let mut buf = [0; 1024];
             let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
@@ -137,7 +140,7 @@ fn listen_to_commands(commands: Vec<CommandCtx>) {
     }
 }
 
-fn launch_commands(command: &Command) -> Vec<CommandCtx> {
+fn launch_command(command: Command) -> Box<CommandCtx> {
     let cstring_filename = CString::new(command.bin.clone()).unwrap();
     let cmdname = cstring_filename.as_c_str();
 
@@ -149,16 +152,17 @@ fn launch_commands(command: &Command) -> Vec<CommandCtx> {
 
     let (from_child_fd, to_parent) = pipe().unwrap();
 
-    let mut ctxvec = Vec::<CommandCtx>::with_capacity(1);
+    let mut ctx = Box::new(CommandCtx {
+        command: command,
+        pid: Default::default(),
+        listen_fd: Default::default(),
+    });
 
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => {
             println!("yay we are the parent, process is {}", child);
-            ctxvec.push(CommandCtx {
-                command: &command,
-                pid: child,
-                listen_fd: from_child_fd,
-            });
+            ctx.pid = Some(child);
+            ctx.listen_fd = Some(from_child_fd);
         }
         Ok(ForkResult::Child) => {
             dup2(to_parent, 1).unwrap();
@@ -169,7 +173,7 @@ fn launch_commands(command: &Command) -> Vec<CommandCtx> {
         Err(_) => println!("Error fork failed"),
     }
 
-    ctxvec
+    ctx
 }
 
 fn main() -> std::io::Result<()> {
@@ -180,10 +184,12 @@ fn main() -> std::io::Result<()> {
 
     match parse_config(&opts.config_filename) {
         Ok(config) => {
+            let mut running_commands = Vec::<Box<CommandCtx>>::with_capacity(1);
             for cmd in config.commands {
                 println!("Found a command: {}", cmd.bin);
-                launch_commands(&cmd);
+                running_commands.push(launch_command(cmd));
             }
+            listen_to_commands(running_commands);
         }
         Err(_) => panic!("Error parsing command file"),
     }

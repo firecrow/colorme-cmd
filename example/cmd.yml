@@ -10,3 +10,9 @@ commands:
     follow: true 
     out_color: green 
     err_color: red 
+
+  - bin: "tail"
+    args: ["-F", "/var/log/dmesg"]
+    follow: true 
+    out_color: blue 
+    err_color: red 

@@ -76,9 +76,9 @@ struct Command {
     follow: bool,
 }
 
-struct CommandCtx {
-    command: Command,
-    listen_fd: Option<i32>,
+struct CommandCtx<'a> {
+    command: &'a Command,
+    child_out_file: Option<&'a File>,
     pid: Option<Pid>,
 }
 
@@ -94,53 +94,42 @@ fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     }
 }
 
-struct RunningProcess {
-    command: Command,
-    out: File,
-    status: Option<i32>,
-}
-
 fn listen_to_commands(commands: Vec<Box<CommandCtx>>) {
     dbg!(commands.len());
 
-    for ctx in commands {
-        let listen_fd = ctx.listen_fd.expect("listen fd sould have been set by now");
-        unsafe {
-            fcntl(listen_fd, libc::F_SETFL, libc::O_NONBLOCK);
-
-            let mut from_child = File::from_raw_fd(listen_fd);
+    loop {
+        for ctx in &commands {
+            let mut child_file = ctx.child_out_file.expect("File not set");
 
             let mut buf = [0; 1024];
-            let mut len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
-            loop {
-                if len > 0 {
-                    println!("using color {}", &ctx.command.out_color);
-                    print!(
-                        "\x1b[{}m{}\x1b[0m",
-                        get_color(&ctx.command.out_color),
-                        str::from_utf8(&buf).unwrap()
-                    );
-                }
-                len = Read::read(&mut from_child, &mut buf).unwrap_or_default();
+            let len = child_file.read(&mut buf).unwrap_or_default();
 
-                if ctx.command.follow {
-                    let status = wait::waitpid(ctx.pid, Some(WaitPidFlag::WNOHANG)).unwrap();
+            println!("reading {} : {:?}", len, ctx.pid);
 
-                    match status {
-                        WaitStatus::Exited(_child, _) => break,
-                        WaitStatus::Signaled(_child, _, _) => break,
-                        WaitStatus::Stopped(_child, _) => break,
-                        _ => (),
-                    }
-                }
-
-                sleep(time::Duration::from_millis(100));
+            if len > 0 {
+                println!("using color {}", &ctx.command.out_color);
+                print!(
+                    "\x1b[{}m{}\x1b[0m",
+                    get_color(&ctx.command.out_color),
+                    str::from_utf8(&buf).unwrap()
+                );
             }
-        };
+
+            if ctx.command.follow {
+                let status = wait::waitpid(ctx.pid, Some(WaitPidFlag::WNOHANG)).unwrap();
+                match status {
+                    WaitStatus::Exited(_child, _) => break,
+                    WaitStatus::Signaled(_child, _, _) => break,
+                    WaitStatus::Stopped(_child, _) => break,
+                    _ => (),
+                }
+            }
+            sleep(time::Duration::from_millis(1000));
+        }
     }
 }
 
-fn launch_command(command: Command) -> Box<CommandCtx> {
+fn launch_command<'a>(command: &'a Command) -> Box<CommandCtx> {
     let cstring_filename = CString::new(command.bin.clone()).unwrap();
     let cmdname = cstring_filename.as_c_str();
 
@@ -153,18 +142,26 @@ fn launch_command(command: Command) -> Box<CommandCtx> {
     let (from_child_fd, to_parent) = pipe().unwrap();
 
     let mut ctx = Box::new(CommandCtx {
-        command: command,
+        command: &command,
         pid: Default::default(),
-        listen_fd: Default::default(),
+        child_out_file: Default::default(),
     });
 
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => {
             println!("yay we are the parent, process is {}", child);
-            ctx.pid = Some(child);
-            ctx.listen_fd = Some(from_child_fd);
+
+            unsafe {
+                fcntl(from_child_fd, libc::F_SETFL, libc::O_NONBLOCK);
+
+                let mut from_child = File::from_raw_fd(from_child_fd);
+
+                ctx.pid = Some(child);
+                ctx.child_out_file = Some(&mut from_child);
+            }
         }
         Ok(ForkResult::Child) => {
+            println!("copyout out things");
             dup2(to_parent, 1).unwrap();
             execvp(cmdname, &argsvec[..])
                 .map_err(|err| println!("error from execvp {:?}", err))
@@ -184,10 +181,10 @@ fn main() -> std::io::Result<()> {
 
     match parse_config(&opts.config_filename) {
         Ok(config) => {
-            let mut running_commands = Vec::<Box<CommandCtx>>::with_capacity(1);
-            for cmd in config.commands {
+            let mut running_commands = Vec::<Box<CommandCtx>>::with_capacity(config.commands.len());
+            for cmd in &config.commands {
                 println!("Found a command: {}", cmd.bin);
-                running_commands.push(launch_command(cmd));
+                running_commands.push(launch_command(&cmd));
             }
             listen_to_commands(running_commands);
         }

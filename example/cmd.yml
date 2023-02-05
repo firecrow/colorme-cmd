@@ -12,7 +12,7 @@ commands:
     err_color: red 
 
   - bin: "tail"
-    args: ["-F", "/var/log/dmesg"]
+    args: ["-F", "/var/log/syslog"]
     follow: true 
     out_color: blue 
     err_color: red 

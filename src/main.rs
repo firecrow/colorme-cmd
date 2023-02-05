@@ -94,9 +94,9 @@ fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     }
 }
 
-fn listen_to_commands(commands: Vec<Box<CommandCtx>>) {
+fn listen_to_commands(mut commands: Vec<Box<CommandCtx>>) {
     loop {
-        for ctx in &commands {
+        for ctx in &mut commands {
             let mut buf = [0; 1024];
             let len = ctx.child_out_file.read(&mut buf).unwrap_or_default();
 

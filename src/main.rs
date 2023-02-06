@@ -13,6 +13,9 @@ pub struct OptConfiguration<'a> {
 
 const DEFAULT_CONFIG_FILENAME: &str = "cmd.yml";
 
+/**
+ * This function parses an array of strings into the paramters to run the application
+ */
 fn parse_incoming_command_line(args: &[String]) -> Box<OptConfiguration> {
     dbg!(args);
 
@@ -40,6 +43,11 @@ struct Config {
     commands: Vec<command::Command>,
 }
 
+/**
+ * This function parses the config file to configure which commands to spawn
+ *
+ * see example/cmd.yml for an example configuration
+ */
 fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     println!("opening config file {}", config_fname);
 
@@ -52,6 +60,15 @@ fn parse_config(config_fname: &str) -> Result<Config, Box<dyn Error>> {
     }
 }
 
+/*
+* This is the entry point to the application
+*
+* It parses the config and the spaws the processes specified in order to listen
+* to their std output, in most cases these are `tail` commands or whateveer else
+* is used to generate logs for a given application
+*
+* see example/cmd.yml for an example configuration
+*/
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
 

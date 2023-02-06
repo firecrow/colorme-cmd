@@ -1,16 +1,13 @@
 commands:
   - bin: "ls"
     args: ["/", "-ltr"]
-    follow: false
     out_color: purple 
     filter: "media"
 
   - bin: "tail"
     args: ["-F", "/var/log/mpd/mpd.log"]
-    follow: true 
     out_color: green 
 
   - bin: "tail"
     args: ["-F", "/var/log/syslog"]
-    follow: true 
     out_color: blue 

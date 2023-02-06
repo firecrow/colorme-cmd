@@ -12,18 +12,23 @@ use std::str;
 use std::thread::sleep;
 use std::time;
 
+use regex::Regex;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Command {
-    pub out_color: String,
     pub bin: String,
     pub args: Vec<String>,
-    pub follow: bool,
+    out_color: String,
+    follow: bool,
+    filter: Option<String>,
 }
 
 pub struct CommandCtx<'a> {
-    pub command: &'a Command,
-    pub child_out_file: File,
-    pub pid: Pid,
+    command: &'a Command,
+    child_out_file: File,
+    pid: Pid,
+    shelf: String,
+    regex: Option<Regex>,
 }
 
 pub fn launch_command<'a>(cmd: &'a Command) -> Option<Box<CommandCtx>> {
@@ -47,10 +52,17 @@ pub fn launch_command<'a>(cmd: &'a Command) -> Option<Box<CommandCtx>> {
 
                 let from_child = File::from_raw_fd(from_child_fd);
 
+                let mut re: Option<Regex> = None;
+                if let Some(regex_str) = &cmd.filter {
+                    re = Some(Regex::new(regex_str.as_str()).unwrap());
+                }
+
                 let ctx = Box::new(CommandCtx {
                     command: &cmd,
                     pid: child,
                     child_out_file: from_child,
+                    shelf: "".to_string(),
+                    regex: re,
                 });
                 return Some(ctx);
             }
@@ -95,15 +107,22 @@ pub fn listen_to_commands(mut commands: Vec<Box<CommandCtx>>) {
             let mut buf = [0; 1024];
             let len = ctx.child_out_file.read(&mut buf).unwrap_or_default();
 
-            println!("reading {} : {:?}", len, ctx.pid);
-
             if len > 0 {
-                println!("using color {}", &ctx.command.out_color);
-                print!(
-                    "\x1b[{}m{}\x1b[0m",
-                    get_color(&ctx.command.out_color),
-                    str::from_utf8(&buf).unwrap()
-                );
+                let content = str::from_utf8(&buf).unwrap();
+
+                ctx.shelf += content;
+                if ctx.shelf.contains("\n") {
+                    if ctx.regex.is_none()
+                        || ctx.regex.as_ref().unwrap().is_match(ctx.shelf.as_str())
+                    {
+                        print!(
+                            "\x1b[{}m{}\x1b[0m",
+                            get_color(&ctx.command.out_color),
+                            ctx.shelf
+                        );
+                    }
+                    ctx.shelf = "".to_string();
+                }
             }
 
             if ctx.command.follow {

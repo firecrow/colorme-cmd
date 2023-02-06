@@ -1,8 +1,7 @@
 commands:
   - bin: "ls"
-    args: ["/", "-ltr"]
+    args: ["/dev", "-ltr"]
     out_color: purple 
-    filter: "media"
 
   - bin: "tail"
     args: ["-F", "/var/log/mpd/mpd.log"]
@@ -11,3 +10,4 @@ commands:
   - bin: "tail"
     args: ["-F", "/var/log/syslog"]
     out_color: blue 
+    filter: "usb"

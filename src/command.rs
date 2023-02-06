@@ -112,14 +112,14 @@ pub fn listen_to_commands(mut commands: Vec<Box<CommandCtx>>) {
 
                 ctx.shelf += content;
                 if ctx.shelf.contains("\n") {
-                    if ctx.regex.is_none()
-                        || ctx.regex.as_ref().unwrap().is_match(ctx.shelf.as_str())
-                    {
-                        print!(
-                            "\x1b[{}m{}\x1b[0m",
-                            get_color(&ctx.command.out_color),
-                            ctx.shelf
-                        );
+                    for line in ctx.shelf.split("\n") {
+                        if ctx.regex.is_none() || ctx.regex.as_ref().unwrap().is_match(line) {
+                            print!(
+                                "\x1b[{}m{}\x1b[0m\n",
+                                get_color(&ctx.command.out_color),
+                                line
+                            );
+                        }
                     }
                     ctx.shelf = "".to_string();
                 }
@@ -134,7 +134,8 @@ pub fn listen_to_commands(mut commands: Vec<Box<CommandCtx>>) {
                     _ => (),
                 }
             }
-            sleep(time::Duration::from_millis(1000));
+            // throttle so that it does not consume more resources than would be visible
+            sleep(time::Duration::from_millis(100));
         }
     }
 }

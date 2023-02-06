@@ -3,6 +3,7 @@ commands:
     args: ["/", "-ltr"]
     follow: false
     out_color: purple 
+    filter: "media"
 
   - bin: "tail"
     args: ["-F", "/var/log/mpd/mpd.log"]
